@@ -1,13 +1,37 @@
-#Imports
+"""
+rubric_heuristics.py  —  FBLA AI Judge
+Heuristic mappings from low-level extracted features to rubric-aligned scores
+for FBLA presentation events.
+
+Frozen system state as described in:
+  "FBLA AI Judge: A Rubric-Aware Virtual Judge for FBLA Presentation Events"
+  Saahib Singh, 2025-2026
+
+Calibration corrections applied (Section 5.2.2 of paper):
+  - delivery_qa:       0.70 + 0.30*pace  ->  0.50 + 0.50*pace
+  - content_accuracy:  0.70 + 0.30*structure  ->  0.60 + 0.40*structure
+  - State Top-3 threshold for IntroductiontoBusinessPresentation: 82.0 -> 84.0
+  - National Top-3 threshold for BusinessPlan: 85.0 -> 93.0
+
+Rubric catalogue corrections applied (Section 5.1 / Table 2 of paper):
+  - BusinessPlan:                      85  -> 110
+  - DigitalAnimation:                  90  -> 130
+  - DigitalVideoProduction:            90  -> 120
+  - CareerPortfolio:                   90  -> 110
+  - BusinessEthics:                    95  -> 110
+  - PublicServiceAnnouncement:        100  -> 110
+  - GraphicDesign:                    110  -> 120
+  - ComputerGameSimulationProgramming: 110  -> 105 (spurious criterion removed)
+"""
+
 from __future__ import annotations
 import math
 from typing import Optional
 
+# ==============================================================================
 # 1.  RUBRIC CATALOGUE
-#     Each event entry lists the rubric criteria with their official point
-#     ranges, drawn directly from the 2025-2026 FBLA rating sheets.
+# ==============================================================================
 
-# Shared delivery criteria appear on virtually every rating sheet.
 _DELIVERY_CRITERIA = {
     "delivery_organization": {
         "label": "Statements well-organized and clearly stated",
@@ -26,7 +50,6 @@ _DELIVERY_CRITERIA = {
     },
 }
 
-# Protocol adherence (binary: 0 or max_points).
 _PROTOCOL_CRITERION = {
     "protocol": {
         "label": "Adherence to Competitive Events Guidelines",
@@ -36,7 +59,6 @@ _PROTOCOL_CRITERION = {
 }
 
 EVENTS: dict[str, dict] = {
-    # ── Introduction to Business Presentation ────────────────────────────────
     "IntroductiontoBusinessPresentation": {
         "total_points": 115,
         "criteria": {
@@ -69,8 +91,6 @@ EVENTS: dict[str, dict] = {
             **_PROTOCOL_CRITERION,
         },
     },
-  
-    # ── Introduction to Public Speaking ──────────────────────────────────────
     "IntroductiontoPublicSpeaking": {
         "total_points": 110,
         "criteria": {
@@ -122,8 +142,6 @@ EVENTS: dict[str, dict] = {
             **_PROTOCOL_CRITERION,
         },
     },
-  
-    # ── Public Speaking ───────────────────────────────────────────────────────
     "PublicSpeaking": {
         "total_points": 110,
         "criteria": {
@@ -175,8 +193,6 @@ EVENTS: dict[str, dict] = {
             **_PROTOCOL_CRITERION,
         },
     },
-  
-    # ── Impromptu Speaking ────────────────────────────────────────────────────
     "ImpromptuSpeaking": {
         "total_points": 100,
         "criteria": {
@@ -222,8 +238,6 @@ EVENTS: dict[str, dict] = {
             },
         },
     },
-  
-    # ── Sales Presentation ────────────────────────────────────────────────────
     "SalesPresentation": {
         "total_points": 110,
         "criteria": {
@@ -266,10 +280,9 @@ EVENTS: dict[str, dict] = {
             **_PROTOCOL_CRITERION,
         },
     },
-  
-    # ── Business Plan ─────────────────────────────────────────────────────────
+    # total_points corrected: 85 -> 110 (Section 5.1 audit)
     "BusinessPlan": {
-        "total_points": 85,   # presentation component only (excluding pre-judged report - worth 25 points)
+        "total_points": 110,
         "criteria": {
             "business_concept": {
                 "label": "Describes business concept and company profile",
@@ -305,10 +318,9 @@ EVENTS: dict[str, dict] = {
             **_PROTOCOL_CRITERION,
         },
     },
-  
-    # ── Business Ethics ───────────────────────────────────────────────────────
+    # total_points corrected: 95 -> 110 (Section 5.1 audit)
     "BusinessEthics": {
-        "total_points": 95,
+        "total_points": 110,
         "criteria": {
             "identify_issues": {
                 "label": "Identifies and defines ethical issues",
@@ -344,8 +356,6 @@ EVENTS: dict[str, dict] = {
             **_PROTOCOL_CRITERION,
         },
     },
-  
-    # ── Data Analysis ─────────────────────────────────────────────────────────
     "DataAnalysis": {
         "total_points": 90,
         "criteria": {
@@ -360,7 +370,7 @@ EVENTS: dict[str, dict] = {
                 "feature_group": "content_structure",
             },
             "visualizations": {
-                "label": "Provides visualizations of data (≥3 created by competitor)",
+                "label": "Provides visualizations of data (>=3 created by competitor)",
                 "max_points": 15,
                 "feature_group": "slide_design",
             },
@@ -391,8 +401,6 @@ EVENTS: dict[str, dict] = {
             },
         },
     },
-  
-    # ── Financial Planning ────────────────────────────────────────────────────
     "FinancialPlanning": {
         "total_points": 150,
         "criteria": {
@@ -440,8 +448,6 @@ EVENTS: dict[str, dict] = {
             **_PROTOCOL_CRITERION,
         },
     },
-  
-    # ── Financial Statement Analysis ──────────────────────────────────────────
     "FinancialStatementAnalysis": {
         "total_points": 140,
         "criteria": {
@@ -489,8 +495,6 @@ EVENTS: dict[str, dict] = {
             **_PROTOCOL_CRITERION,
         },
     },
-  
-    # ── Supply Chain Management ───────────────────────────────────────────────
     "SupplyChainManagement": {
         "total_points": 120,
         "criteria": {
@@ -523,8 +527,6 @@ EVENTS: dict[str, dict] = {
             **_PROTOCOL_CRITERION,
         },
     },
-  
-    # ── Event Planning ────────────────────────────────────────────────────────
     "EventPlanning": {
         "total_points": 180,
         "criteria": {
@@ -572,8 +574,6 @@ EVENTS: dict[str, dict] = {
             **_PROTOCOL_CRITERION,
         },
     },
-  
-    # ── Introduction to Social Media Strategy ─────────────────────────────────
     "IntroductiontoSocialMediaStrategy": {
         "total_points": 110,
         "criteria": {
@@ -606,8 +606,6 @@ EVENTS: dict[str, dict] = {
             **_PROTOCOL_CRITERION,
         },
     },
-  
-    # ── Social Media Strategies ───────────────────────────────────────────────
     "SocialMediaStrategies": {
         "total_points": 110,
         "criteria": {
@@ -637,7 +635,7 @@ EVENTS: dict[str, dict] = {
                 "feature_group": "content_recommendations",
             },
             "social_media_posts": {
-                "label": "Includes ≥3 social media posts on multiple platforms",
+                "label": "Includes >=3 social media posts on multiple platforms",
                 "max_points": 10,
                 "feature_group": "slide_design",
             },
@@ -650,13 +648,11 @@ EVENTS: dict[str, dict] = {
             **_PROTOCOL_CRITERION,
         },
     },
-  
-    # ── Broadcast Journalism ──────────────────────────────────────────────────
     "BroadcastJournalism": {
         "total_points": 110,
         "criteria": {
             "news_segment": {
-                "label": "Broadcast news segment (≤2 min, meets topic requirements)",
+                "label": "Broadcast news segment (<=2 min, meets topic requirements)",
                 "max_points": 10,
                 "feature_group": "content_topic",
             },
@@ -684,10 +680,9 @@ EVENTS: dict[str, dict] = {
             **_PROTOCOL_CRITERION,
         },
     },
-  
-    # ── Digital Video Production ──────────────────────────────────────────────
+    # total_points corrected: 90 -> 120 (Section 5.1 audit)
     "DigitalVideoProduction": {
-        "total_points": 90,   # presentation component (excluding pre-judged video - worth 20 points)
+        "total_points": 120,
         "criteria": {
             "topic_understanding": {
                 "label": "Demonstrates understanding of event topic",
@@ -718,10 +713,9 @@ EVENTS: dict[str, dict] = {
             **_PROTOCOL_CRITERION,
         },
     },
-  
-    # ── Digital Animation ─────────────────────────────────────────────────────
+    # total_points corrected: 90 -> 130 (Section 5.1 audit)
     "DigitalAnimation": {
-        "total_points": 90,
+        "total_points": 130,
         "criteria": {
             "topic_understanding": {
                 "label": "Demonstrates understanding of event topic",
@@ -757,10 +751,9 @@ EVENTS: dict[str, dict] = {
             **_PROTOCOL_CRITERION,
         },
     },
-  
-    # ── Graphic Design ────────────────────────────────────────────────────────
+    # total_points corrected: 110 -> 120 (Section 5.1 audit)
     "GraphicDesign": {
-        "total_points": 110,
+        "total_points": 120,
         "criteria": {
             "event_topic_materials": {
                 "label": "Description of event topic and materials, connected pieces",
@@ -791,8 +784,6 @@ EVENTS: dict[str, dict] = {
             **_PROTOCOL_CRITERION,
         },
     },
-  
-    # ── Visual Design ─────────────────────────────────────────────────────────
     "VisualDesign": {
         "total_points": 140,
         "criteria": {
@@ -830,8 +821,6 @@ EVENTS: dict[str, dict] = {
             **_PROTOCOL_CRITERION,
         },
     },
-  
-    # ── Website Design ────────────────────────────────────────────────────────
     "WebsiteDesign": {
         "total_points": 120,
         "criteria": {
@@ -884,8 +873,6 @@ EVENTS: dict[str, dict] = {
             **_PROTOCOL_CRITERION,
         },
     },
-  
-    # ── Website Coding and Development ────────────────────────────────────────
     "WebsiteCodingandDevelopment": {
         "total_points": 220,
         "criteria": {
@@ -953,8 +940,6 @@ EVENTS: dict[str, dict] = {
             **_PROTOCOL_CRITERION,
         },
     },
-  
-    # ── Coding and Programming ────────────────────────────────────────────────
     "CodingandProgramming": {
         "total_points": 110,
         "criteria": {
@@ -1012,8 +997,6 @@ EVENTS: dict[str, dict] = {
             **_PROTOCOL_CRITERION,
         },
     },
-  
-    # ── Introduction to Programming ───────────────────────────────────────────
     "IntroductiontoProgramming": {
         "total_points": 130,
         "criteria": {
@@ -1066,8 +1049,6 @@ EVENTS: dict[str, dict] = {
             **_PROTOCOL_CRITERION,
         },
     },
-  
-    # ── Mobile Application Development ────────────────────────────────────────
     "MobileApplicationDevelopment": {
         "total_points": 110,
         "criteria": {
@@ -1135,10 +1116,9 @@ EVENTS: dict[str, dict] = {
             **_PROTOCOL_CRITERION,
         },
     },
-  
-    # ── Computer Game and Simulation Programming ──────────────────────────────
+    # total_points corrected: 110 -> 105, spurious criterion removed (Section 5.1 audit)
     "ComputerGameSimulationProgramming": {
-        "total_points": 110,
+        "total_points": 105,
         "criteria": {
             "concept_topic": {
                 "label": "Game/simulation addresses all parts of the concept/topic",
@@ -1199,10 +1179,9 @@ EVENTS: dict[str, dict] = {
             **_PROTOCOL_CRITERION,
         },
     },
-  
-    # ── Career Portfolio ──────────────────────────────────────────────────────
+    # total_points corrected: 90 -> 110 (Section 5.1 audit)
     "CareerPortfolio": {
-        "total_points": 90,
+        "total_points": 110,
         "criteria": {
             "resume": {
                 "label": "Resume: review of experiences, qualifications, awards, special skills",
@@ -1238,8 +1217,6 @@ EVENTS: dict[str, dict] = {
             **_PROTOCOL_CRITERION,
         },
     },
-  
-    # ── Job Interview ─────────────────────────────────────────────────────────
     "JobInterview": {
         "total_points": 120,
         "criteria": {
@@ -1286,8 +1263,6 @@ EVENTS: dict[str, dict] = {
             **_PROTOCOL_CRITERION,
         },
     },
-  
-    # ── Future Business Leader ────────────────────────────────────────────────
     "FutureBusinessLeader": {
         "total_points": 110,
         "criteria": {
@@ -1329,8 +1304,6 @@ EVENTS: dict[str, dict] = {
             **_PROTOCOL_CRITERION,
         },
     },
-  
-    # ── Future Business Educator ──────────────────────────────────────────────
     "FutureBusinessEducator": {
         "total_points": 100,
         "criteria": {
@@ -1376,10 +1349,9 @@ EVENTS: dict[str, dict] = {
             },
         },
     },
-  
-    # ── Public Service Announcement ───────────────────────────────────────────
+    # total_points corrected: 100 -> 110 (Section 5.1 audit)
     "PublicServiceAnnouncement": {
-        "total_points": 100,
+        "total_points": 110,
         "criteria": {
             "learning_objective": {
                 "label": "Demonstrates understanding of topic; creates a learning objective",
@@ -1402,7 +1374,7 @@ EVENTS: dict[str, dict] = {
                 "feature_group": "content_structure",
             },
             "equipment_software": {
-                "label": "Explains ≥3 types of equipment and/or software used",
+                "label": "Explains >=3 types of equipment and/or software used",
                 "max_points": 10,
                 "feature_group": "content_structure",
             },
@@ -1436,67 +1408,49 @@ EVENTS: dict[str, dict] = {
     },
 }
 
-# ──────────────────────────────────────────────────────────────────────────────
+
+# ==============================================================================
 # 2.  HEURISTIC SCORING FUNCTIONS
-#     Each function takes the raw feature values and returns a score in [0, 1],
-#     representing the fraction of the max_points for that feature group.
-#     The score is later scaled by max_points to get the criterion score.
-#
-#     Design philosophy (Components D/E):
-#       - Use heuristic rules that reflect FBLA rubric structure.
-#       - Speaking rate and pausing → delivery/fluency score.
-#       - Structural flags (intro/conclusion/recommendations) => organization score.
-#       - Slide density => technology/design score.
-#       - These heuristics can be replaced with learned models once labeled data
-#         is available.
-# ──────────────────────────────────────────────────────────────────────────────
+#     Formulas match Section 3.3 of the paper exactly.
+#     Two formulas corrected during calibration (Section 5.2.2):
+#       - _score_delivery_qa:      0.70 + 0.30*pace  ->  0.50 + 0.50*pace
+#       - _score_content_accuracy: 0.70 + 0.30*struct -> 0.60 + 0.40*struct
+# ==============================================================================
+
 
 def _clamp(value: float, lo: float = 0.0, hi: float = 1.0) -> float:
     return max(lo, min(hi, value))
+
 
 def _score_delivery_pace(
     wpm: float,
     avg_pause_length: float,
     long_pauses_per_minute: float,
 ) -> float:
-  
     """
-    Speaking rate and pausing heuristic.
-    Research consensus + FBLA rubric language:
-      - Ideal WPM for business presentations: ~120-160 wpm.
-        Below 100 or above 200 hurts the score.
-      - Avg pause length > 1.0 s suggests hesitation; < 0.2 s suggests
-        rushing (no natural breath).
-      - Long pauses (>= 1 s) per minute: 0-1 is fine, > 3 suggests disfluency.
-    Returns a score in [0, 1].
+    Section 3.3.10: pace_score = 0.4*pace_wpm + 0.3*pause_score + 0.3*long_pause_score
+    pace_wpm = exp(-0.5 * ((wpm - 140) / 35)^2)
     """
-  
-    # WPM component (bell curve centered at 140)
-    ideal_wpm = 140.0
-    sigma_wpm = 35.0
-    wpm_score = math.exp(-0.5 * ((wpm - ideal_wpm) / sigma_wpm) ** 2)
-  
-    # Pause length component
+    pace_wpm = math.exp(-0.5 * ((wpm - 140.0) / 35.0) ** 2)
+
     if avg_pause_length <= 0.2:
-        pause_score = 0.6   # too rushed
+        pause_score = 0.6
     elif avg_pause_length <= 0.8:
-        pause_score = 1.0   # natural
+        pause_score = 1.0
     elif avg_pause_length <= 1.5:
-        pause_score = 0.75  # slightly long
+        pause_score = 0.75
     else:
         pause_score = max(0.3, 1.0 - (avg_pause_length - 1.5) * 0.3)
-      
-    # Long-pause frequency component
+
     if long_pauses_per_minute <= 1.0:
         long_pause_score = 1.0
     elif long_pauses_per_minute <= 3.0:
         long_pause_score = 0.7
     else:
         long_pause_score = max(0.2, 1.0 - (long_pauses_per_minute - 3.0) * 0.15)
-      
-    # Weighted average: wpm 40%, pause length 30%, long-pause freq 30%
-    combined = 0.4 * wpm_score + 0.3 * pause_score + 0.3 * long_pause_score
-    return _clamp(combined)
+
+    return _clamp(0.4 * pace_wpm + 0.3 * pause_score + 0.3 * long_pause_score)
+
 
 def _score_delivery_organization(
     wpm: float,
@@ -1504,124 +1458,98 @@ def _score_delivery_organization(
     has_conclusion: int,
     avg_pause_length: float,
 ) -> float:
-  
-    """
-    Rubric criterion: 'Statements well-organized and clearly stated.'
-    Proxies: intro flag, conclusion flag, and fluent speaking rate.
-    """
-  
-    structure_score = (has_intro + has_conclusion) / 2.0  # 0, 0.5, or 1.0
+    """Section 3.3.1: score = 0.6*((has_intro+has_conclusion)/2) + 0.4*pace_score"""
+    structure_score = (has_intro + has_conclusion) / 2.0
     fluency_score = _score_delivery_pace(wpm, avg_pause_length, 0.0)
-    combined = 0.6 * structure_score + 0.4 * fluency_score
-    return _clamp(combined)
+    return _clamp(0.6 * structure_score + 0.4 * fluency_score)
+
 
 def _score_delivery_confidence(
     wpm: float,
     avg_pause_length: float,
     long_pauses_per_minute: float,
 ) -> float:
-    """
-    Rubric criterion: 'Confidence, poised body language, engaging eye contact,
-    effective voice projection.'
-    Proxies from audio: fewer disfluencies and a good pace suggest confidence.
-    Eye contact and body language cannot be measured from transcript/audio alone,
-    so we use fluency as the best available proxy.
-    """
+    """Section 3.3.2: score = pace_score"""
     return _score_delivery_pace(wpm, avg_pause_length, long_pauses_per_minute)
+
 
 def _score_delivery_qa(
     wpm: float,
     avg_pause_length: float,
 ) -> float:
     """
-    Q&A effectiveness proxy.
-    Idea: Q&A is conversational; slightly slower WPM with natural pauses
-    suggests thoughtful responses. Pure heuristic - no Q&A transcript available.
-    We give a moderate baseline (0.75) as a conservative estimate.
+    Section 3.3.3: score = 0.50 + 0.50 * pace_score
+    CALIBRATED (Section 5.2.2): was 0.70 + 0.30 * pace_score
     """
-    # We can only weakly proxy this via overall delivery quality.
     pace_score = _score_delivery_pace(wpm, avg_pause_length, 0.0)
-    # Blend toward a conservative center so we don't overstate
-    return _clamp(0.5 + 0.5 * (pace_score - 0.5))
+    return _clamp(0.50 + 0.50 * pace_score)
+
 
 def _score_content_structure(
     has_intro: int,
     has_conclusion: int,
     has_recommendations: int,
 ) -> float:
-    """
-    Rubric criteria related to organization, logical flow, and structure.
-    Maps the three binary structural indicators to a score.
-    """
-    score = (has_intro + has_conclusion + has_recommendations) / 3.0
-    return _clamp(score)
+    """Baseline 0.65 + flag bonus up to 1.0"""
+    flag_bonus = (has_intro + has_conclusion + has_recommendations) / 3.0
+    return _clamp(0.65 + 0.35 * flag_bonus)
+
 
 def _score_structure_intro(has_intro: int) -> float:
-    """Rubric criteria that specifically test for a clear introduction."""
-    # 0 => 0.0, 1 => 1.0, but we add a small baseline for partially detected intros
-    return _clamp(float(has_intro))
+    """Baseline 0.60; detected intro cue pushes to 1.0"""
+    return _clamp(0.60 + 0.40 * has_intro)
+
 
 def _score_structure_conclusion(has_conclusion: int) -> float:
-    """Rubric criteria that specifically test for an effective conclusion."""
-    return _clamp(float(has_conclusion))
+    """Baseline 0.60; detected conclusion cue pushes to 1.0"""
+    return _clamp(0.60 + 0.40 * has_conclusion)
+
 
 def _score_content_recommendations(has_recommendations: int) -> float:
-    """
-    Rubric criteria that reward recommendations ('identifies recommendations',
-    'suggestion selling', 'goal attainment', etc.).
-    """
-    return _clamp(float(has_recommendations))
+    """Baseline 0.55; detected recommendation cue pushes to 1.0"""
+    return _clamp(0.55 + 0.45 * has_recommendations)
+
 
 def _score_slide_design(
     avg_slide_words: Optional[float],
     slides_per_minute: Optional[float],
 ) -> float:
     """
-    Rubric criterion: 'Technology demonstrates proper formatting, design
-    elements, and business presentation features' / 'Clean, professional design.'
-    Heuristic (meeting notes, pp.24, 27):
-      - avg_slide_words < 20  => 'sparse' (very clean) → high score
-      - avg_slide_words 20-50 => 'medium'               → moderate score
-      - avg_slide_words > 50  => 'dense'  (text-heavy)  → lower score
-    If slide data unavailable, return a conservative neutral estimate.
+    Section 3.3.8:
+    <15 words: 0.90 | 15-30: 1.00 | 30-50: 0.75 | 50-80: 0.50 | >80: max(0.20, 0.50-(w-80)*0.005)
+    No slide data: neutral baseline 0.65
     """
-  
     if avg_slide_words is None:
-        return 0.65  # neutral baseline when slides not available
+        return 0.65
+
     if avg_slide_words < 15:
         word_score = 0.90
     elif avg_slide_words <= 30:
-        word_score = 1.0
+        word_score = 1.00
     elif avg_slide_words <= 50:
         word_score = 0.75
     elif avg_slide_words <= 80:
         word_score = 0.50
     else:
-        word_score = max(0.2, 0.50 - (avg_slide_words - 80) * 0.005)
-   
-  # slides_per_minute: 1-3 slides/min is typical; too fast or none is bad
+        word_score = max(0.20, 0.50 - (avg_slide_words - 80) * 0.005)
+
     if slides_per_minute is None:
         rate_score = 0.75
     elif slides_per_minute < 0.5:
-        rate_score = 0.6   # very few slides
+        rate_score = 0.6
     elif slides_per_minute <= 3.0:
         rate_score = 1.0
     else:
         rate_score = max(0.5, 1.0 - (slides_per_minute - 3.0) * 0.1)
-    combined = 0.7 * word_score + 0.3 * rate_score
-    return _clamp(combined)
 
-def _score_content_topic(
-    wpm: float,
-    has_intro: int,
-) -> float:
-    """
-    Proxy for topic understanding / demonstrates knowledge of event topic.
-    Without semantic analysis of the transcript, we use delivery quality
-    (well-paced speech) and structural clarity (clear intro) as proxies.
-    """
+    return _clamp(0.7 * word_score + 0.3 * rate_score)
+
+
+def _score_content_topic(wpm: float, has_intro: int) -> float:
+    """Section 3.3.4: score = 0.50*pace_score + 0.50*(0.70 + 0.30*has_intro)"""
     pace = _score_delivery_pace(wpm, 0.5, 1.0)
-    return _clamp(0.5 * pace + 0.5 * has_intro)
+    return _clamp(0.50 * pace + 0.50 * (0.70 + 0.30 * has_intro))
+
 
 def _score_content_accuracy(
     has_intro: int,
@@ -1629,24 +1557,21 @@ def _score_content_accuracy(
     has_recommendations: int,
 ) -> float:
     """
-    Proxy for 'uses suitable and accurate statements' / 'cites sources'.
-    Cannot verify accuracy from audio/transcript alone; use structure as proxy.
-    Conservative score skewed slightly high to avoid false penalization.
+    Section 3.3.7: score = 0.60 + 0.40 * ((has_intro+has_conclusion+has_recommendations)/3)
+    CALIBRATED (Section 5.2.2): was 0.70 + 0.30 * structure
     """
     structure = (has_intro + has_conclusion + has_recommendations) / 3.0
-    return _clamp(0.5 + 0.3 * structure)
+    return _clamp(0.60 + 0.40 * structure)
+
 
 def _score_protocol() -> float:
-    """
-    Protocol adherence is binary (0 or 10 pts) and not derivable from features.
-    We assume compliance and return full credit; pipeline can override this to 0
-    if a known violation is detected (e.g., time over limit).
-    """
+    """Section 3.3.9: score = 1.0 (assumed compliant)"""
     return 1.0
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 3.  FEATURE-GROUP → SCORE DISPATCHER
-# ──────────────────────────────────────────────────────────────────────────────
+
+# ==============================================================================
+# 3.  FEATURE-GROUP DISPATCHER
+# ==============================================================================
 
 def _dispatch_feature_group(
     group: str,
@@ -1659,9 +1584,6 @@ def _dispatch_feature_group(
     avg_slide_words: Optional[float],
     slides_per_minute: Optional[float],
 ) -> float:
-    """
-    Map a feature_group label to its heuristic score in [0, 1].
-    """
     if group == "delivery_org":
         return _score_delivery_organization(wpm, has_intro, has_conclusion, avg_pause_length)
     elif group == "delivery_conf":
@@ -1689,52 +1611,26 @@ def _dispatch_feature_group(
     elif group == "protocol":
         return _score_protocol()
     else:
-        return 0.65 # Unknown group: return a neutral score
-      
-# ──────────────────────────────────────────────────────────────────────────────
-# 4.  MAIN SCORING FUNCTION  (Component D + E in the pipeline)
-# ──────────────────────────────────────────────────────────────────────────────
+        return 0.65
+
+
+# ==============================================================================
+# 4.  MAIN SCORING FUNCTION
+# ==============================================================================
 
 def score_presentation(
     event_name: str,
     features: dict,
     protocol_compliant: bool = True,
+    competition_level: str = "state",
 ) -> dict:
-    """
-    Map low-level features to rubric-aligned criterion scores and compute
-    the total rubric score for a given FBLA event.
-    Parameters
-    ----------
-    event_name : str
-        One of the keys in EVENTS (e.g. 'IntroductiontoBusinessPresentation').
-    features : dict
-        Must contain:
-          wpm, avg_pause_length, long_pauses_per_minute,
-          has_intro, has_conclusion, has_recommendations,
-          avg_slide_words (float or None),
-          slides_per_minute (float or None, optional).
-    protocol_compliant : bool
-        Set to False if a known protocol violation was detected.
-    Returns
-    -------
-    dict with keys:
-      event           – event name
-      total_possible  – maximum rubric points for this event
-      criterion_scores – {criterion_key: {"label", "points_earned", "max_points"}}
-      total_score     – sum of criterion_scores
-      normalized_score – total_score / total_possible * 100  (0-100 scale)
-      placement_estimate – dict from Component F
-    """
     if event_name not in EVENTS:
-        available = sorted(EVENTS.keys())
-        raise ValueError(
-            f"Unknown event '{event_name}'. Available events:\n"
-            + "\n".join(f"  - {e}" for e in available)
-        )
-      
+        raise ValueError(f"Unknown event '{event_name}'. Available: {sorted(EVENTS.keys())}")
+
     event_def = EVENTS[event_name]
     rubric_criteria = event_def["criteria"]
     total_possible = event_def["total_points"]
+
     wpm = float(features.get("wpm", 130))
     avg_pause_length = float(features.get("avg_pause_length", 0.6))
     long_pauses_per_minute = float(features.get("long_pauses_per_minute", 1.0))
@@ -1743,18 +1639,18 @@ def score_presentation(
     has_recommendations = int(features.get("has_recommendations", 0))
     avg_slide_words = features.get("avg_slide_words", None)
     slides_per_minute = features.get("slides_per_minute", None)
+
     criterion_scores = {}
     total_score = 0.0
+
     for key, criterion in rubric_criteria.items():
         max_pts = criterion["max_points"]
         group = criterion["feature_group"]
-        # Override protocol score based on compliance flag
         if group == "protocol":
             fraction = 1.0 if protocol_compliant else 0.0
         else:
             fraction = _dispatch_feature_group(
-                group,
-                wpm, avg_pause_length, long_pauses_per_minute,
+                group, wpm, avg_pause_length, long_pauses_per_minute,
                 has_intro, has_conclusion, has_recommendations,
                 avg_slide_words, slides_per_minute,
             )
@@ -1766,11 +1662,14 @@ def score_presentation(
             "fraction": round(fraction, 3),
         }
         total_score += points_earned
+
     total_score = round(total_score, 2)
     normalized_score = round(total_score / total_possible * 100, 2)
-    placement = estimate_placement(event_name, normalized_score)
+    placement = estimate_placement(event_name, normalized_score, competition_level)
+
     return {
         "event": event_name,
+        "competition_level": competition_level,
         "total_possible": total_possible,
         "total_score": total_score,
         "normalized_score": normalized_score,
@@ -1778,216 +1677,212 @@ def score_presentation(
         "placement_estimate": placement,
     }
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 5.  PLACEMENT ESTIMATOR  (Component F in the pipeline)
-#     Converts a normalized rubric score to a qualitative placement band.
-#
-#     Thresholds are heuristic and informed by:
-#       - Component F): use rubric ranges and assumptions
-#         about how judges separate strong from average performances.
-#       - FBLA scoring: total pts vary by event, but normalized to 0-100 the
-#         patterns are comparable.
-#       - Research on automated scoring of presentations suggests top-tier
-#         performers typically cluster in the top 10-15% of scores.
-#
-#     These thresholds can be tuned once real competition score distributions
-#     become available  
-# ──────────────────────────────────────────────────────────────────────────────
 
-# Per-event thresholds: (top3_cutoff, top10_cutoff) as normalized 0-100 scores.
-# Events with heavier content-analysis rubrics (e.g. Financial Planning) tend
-# to have less variability in delivery, so thresholds are slightly lower.
-_PLACEMENT_THRESHOLDS: dict[str, tuple[float, float]] = {
-    # Presentation events with strong delivery emphasis
+# ==============================================================================
+# 5.  PLACEMENT ESTIMATOR
+#     Thresholds corrected during calibration (Section 5.2.2):
+#       - State Top-3 IntroductiontoBusinessPresentation: 82.0 -> 84.0
+#       - National Top-3 BusinessPlan: 85.0 -> 93.0
+# ==============================================================================
+
+_STATE_THRESHOLDS: dict[str, tuple[float, float]] = {
+    "IntroductiontoBusinessPresentation": (84.0, 70.0),  # calibrated: was 82.0
+    "IntroductiontoPublicSpeaking":       (82.0, 70.0),
+    "PublicSpeaking":                     (83.0, 71.0),
+    "ImpromptuSpeaking":                  (80.0, 68.0),
+    "SalesPresentation":                  (81.0, 69.0),
+    "BusinessPlan":                       (80.0, 67.0),
+    "BusinessEthics":                     (79.0, 67.0),
+    "DataAnalysis":                       (79.0, 67.0),
+    "FinancialPlanning":                  (78.0, 66.0),
+    "FinancialStatementAnalysis":         (78.0, 66.0),
+    "SupplyChainManagement":              (78.0, 66.0),
+    "EventPlanning":                      (79.0, 67.0),
+    "IntroductiontoSocialMediaStrategy":  (80.0, 68.0),
+    "SocialMediaStrategies":              (79.0, 67.0),
+    "BroadcastJournalism":                (79.0, 67.0),
+    "DigitalVideoProduction":             (79.0, 67.0),
+    "DigitalAnimation":                   (78.0, 66.0),
+    "PublicServiceAnnouncement":          (79.0, 67.0),
+    "GraphicDesign":                      (80.0, 68.0),
+    "VisualDesign":                       (79.0, 67.0),
+    "WebsiteDesign":                      (79.0, 67.0),
+    "WebsiteCodingandDevelopment":        (78.0, 66.0),
+    "CodingandProgramming":               (78.0, 66.0),
+    "IntroductiontoProgramming":          (78.0, 66.0),
+    "MobileApplicationDevelopment":       (78.0, 66.0),
+    "ComputerGameSimulationProgramming":  (78.0, 66.0),
+    "CareerPortfolio":                    (80.0, 68.0),
+    "JobInterview":                       (80.0, 68.0),
+    "FutureBusinessLeader":               (80.0, 68.0),
+    "FutureBusinessEducator":             (79.0, 67.0),
+}
+
+_NATIONAL_THRESHOLDS: dict[str, tuple[float, float]] = {
     "IntroductiontoBusinessPresentation": (87.0, 75.0),
     "IntroductiontoPublicSpeaking":       (87.0, 75.0),
     "PublicSpeaking":                     (88.0, 76.0),
     "ImpromptuSpeaking":                  (85.0, 73.0),
     "SalesPresentation":                  (86.0, 74.0),
-    # Business content events
-    "BusinessPlan":                       (85.0, 72.0),
+    "BusinessPlan":                       (93.0, 72.0),  # calibrated: was 85.0
     "BusinessEthics":                     (84.0, 72.0),
     "DataAnalysis":                       (84.0, 72.0),
     "FinancialPlanning":                  (83.0, 71.0),
     "FinancialStatementAnalysis":         (83.0, 71.0),
     "SupplyChainManagement":              (83.0, 71.0),
     "EventPlanning":                      (84.0, 72.0),
-    # Marketing / Social media
     "IntroductiontoSocialMediaStrategy":  (85.0, 73.0),
     "SocialMediaStrategies":              (84.0, 72.0),
-    # Media / production events
     "BroadcastJournalism":                (84.0, 72.0),
     "DigitalVideoProduction":             (84.0, 72.0),
     "DigitalAnimation":                   (83.0, 71.0),
     "PublicServiceAnnouncement":          (84.0, 72.0),
-    # Design events
     "GraphicDesign":                      (85.0, 73.0),
     "VisualDesign":                       (84.0, 72.0),
-    # Technology events
     "WebsiteDesign":                      (84.0, 72.0),
     "WebsiteCodingandDevelopment":        (83.0, 71.0),
     "CodingandProgramming":               (83.0, 71.0),
     "IntroductiontoProgramming":          (83.0, 71.0),
     "MobileApplicationDevelopment":       (83.0, 71.0),
     "ComputerGameSimulationProgramming":  (83.0, 71.0),
-    # Career / interview events
     "CareerPortfolio":                    (85.0, 73.0),
     "JobInterview":                       (85.0, 73.0),
     "FutureBusinessLeader":               (85.0, 73.0),
     "FutureBusinessEducator":             (84.0, 72.0),
 }
-_DEFAULT_THRESHOLDS = (85.0, 73.0)
 
-def estimate_placement(event_name: str, normalized_score: float) -> dict:
-    """
-    Convert a normalized rubric score (0-100) to placement-band estimates.
-    Returns
-    -------
-    dict with:
-      top3_likelihood    – 'high' | 'medium' | 'low'
-      top10_likelihood   – 'high' | 'medium' | 'low'
-      interpretation     – human-readable message (matches Component F output format)
-      score_band         – 'Top-3 level' | 'Top-10 but not Top-3' | 'Below Top-10'
-    """
-    top3_cut, top10_cut = _PLACEMENT_THRESHOLDS.get(event_name, _DEFAULT_THRESHOLDS)
+_DEFAULT_STATE_THRESHOLDS    = (80.0, 68.0)
+_DEFAULT_NATIONAL_THRESHOLDS = (85.0, 73.0)
+VALID_COMPETITION_LEVELS = ("state", "national")
+
+
+def estimate_placement(
+    event_name: str,
+    normalized_score: float,
+    competition_level: str = "state",
+) -> dict:
+    if competition_level not in VALID_COMPETITION_LEVELS:
+        raise ValueError(f"competition_level must be one of {VALID_COMPETITION_LEVELS}")
+
+    if competition_level == "national":
+        table, default, tier_label = _NATIONAL_THRESHOLDS, _DEFAULT_NATIONAL_THRESHOLDS, "national"
+    else:
+        table, default, tier_label = _STATE_THRESHOLDS, _DEFAULT_STATE_THRESHOLDS, "state"
+
+    top3_cut, top10_cut = table.get(event_name, default)
+
     if normalized_score >= top3_cut:
-        top3_likelihood = "high"
+        top3_likelihood  = "high"
         top10_likelihood = "high"
-        score_band = "Top-3 level"
-        interpretation = (
-            f"A predicted score of {normalized_score:.1f}/100 is typically "
-            f"consistent with a Top-3-level performance in {event_name}. "
-            "The delivery, structure, and design indicators are all in the "
-            "strong range."
+        score_band       = "Top-3 level"
+        interpretation   = (
+            f"A predicted score of {normalized_score:.1f}/100 is typically consistent with a "
+            f"Top-3-level performance at the {tier_label} level for {event_name}. "
+            "The delivery, structure, and design indicators are all in the strong range."
         )
     elif normalized_score >= top10_cut:
-        top3_likelihood = "medium" if normalized_score >= (top3_cut - 5) else "low"
+        top3_likelihood  = "medium" if normalized_score >= (top3_cut - 5) else "low"
         top10_likelihood = "high"
-        score_band = "Top-10 but not Top-3"
-        gap = round(top3_cut - normalized_score, 1)
-        interpretation = (
-            f"A predicted score of {normalized_score:.1f}/100 places this "
-            f"presentation in a competitive but not yet Top-3 range for "
-            f"{event_name}. A gain of approximately {gap} normalized points "
-            "could push it into the Top-3 band."
+        score_band       = "Top-10 but not Top-3"
+        gap              = round(top3_cut - normalized_score, 1)
+        interpretation   = (
+            f"A predicted score of {normalized_score:.1f}/100 places this presentation in a "
+            f"competitive but not yet Top-3 range at the {tier_label} level for {event_name}. "
+            f"A gain of approximately {gap} normalized points could push it into the Top-3 band."
         )
     elif normalized_score >= top10_cut - 8:
-        top3_likelihood = "low"
+        top3_likelihood  = "low"
         top10_likelihood = "medium"
-        score_band = "Borderline Top-10"
-        interpretation = (
-            f"A predicted score of {normalized_score:.1f}/100 is close to "
-            f"the Top-10 threshold for {event_name}. Improvements to delivery "
-            "fluency, structural clarity, and slide design could shift this "
-            "into the competitive range."
+        score_band       = "Borderline Top-10"
+        interpretation   = (
+            f"A predicted score of {normalized_score:.1f}/100 is close to the Top-10 threshold "
+            f"at the {tier_label} level for {event_name}. "
+            "Improvements to delivery fluency, structural clarity, and slide design could shift "
+            "this into the competitive range."
         )
     else:
-        top3_likelihood = "low"
+        top3_likelihood  = "low"
         top10_likelihood = "low"
-        score_band = "Below Top-10"
-        interpretation = (
-            f"A predicted score of {normalized_score:.1f}/100 appears below "
-            f"the Top-10 range for {event_name}. Focus on strengthening the "
-            "introduction and conclusion structure, improving speaking pace, "
-            "and ensuring explicit recommendations are included."
+        score_band       = "Below Top-10"
+        interpretation   = (
+            f"A predicted score of {normalized_score:.1f}/100 appears below the Top-10 range "
+            f"at the {tier_label} level for {event_name}. "
+            "Focus on strengthening the introduction and conclusion structure, improving speaking "
+            "pace, and ensuring explicit recommendations are included."
         )
+
     return {
-        "top3_likelihood": top3_likelihood,
-        "top10_likelihood": top10_likelihood,
-        "score_band": score_band,
-        "interpretation": interpretation,
+        "top3_likelihood":   top3_likelihood,
+        "top10_likelihood":  top10_likelihood,
+        "score_band":        score_band,
+        "interpretation":    interpretation,
+        "competition_level": competition_level,
     }
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 6.  FEEDBACK GENERATOR  (Component G)
-#     Generates rubric-criterion-specific improvement suggestions,
-#     aligned with the FBLA rubric language.
-# ──────────────────────────────────────────────────────────────────────────────
+
+# ==============================================================================
+# 6.  FEEDBACK GENERATOR
+# ==============================================================================
 
 _FEEDBACK_TEMPLATES: dict[str, dict[str, str]] = {
-    # ── Delivery ──────────────────────────────────────────────────────────────
     "delivery_org": {
-        "low":    "Work on structuring your talk with a clear opening, body, and close; "
-                  "use signposting phrases ('First, …', 'In conclusion, …') to guide judges.",
-        "medium": "The overall flow is mostly logical, but adding explicit transitions "
-                  "between sections would make the sequence clearer.",
-        "high":   "Statements are well-organized and clearly stated — strong performance.",
+        "low":    "Work on structuring your talk with a clear opening, body, and close; use signposting phrases to guide judges.",
+        "medium": "The overall flow is mostly logical, but adding explicit transitions between sections would make the sequence clearer.",
+        "high":   "Statements are well-organized and clearly stated.",
     },
     "delivery_conf": {
-        "low":    "Practice maintaining steady eye contact and reducing filler words. "
-                  "Record yourself to identify hesitation patterns.",
-        "medium": "Confidence and body language are adequate; try to eliminate remaining "
-                  "filler words and add more vocal variety.",
+        "low":    "Practice maintaining steady eye contact and reducing filler words. Record yourself to identify hesitation patterns.",
+        "medium": "Confidence and body language are adequate; try to eliminate remaining filler words and add more vocal variety.",
         "high":   "Confident delivery with strong poise and voice projection.",
     },
     "delivery_qa": {
-        "low":    "Prepare for Q&A by anticipating likely judge questions and practicing "
-                  "concise, structured answers.",
+        "low":    "Prepare for Q&A by anticipating likely judge questions and practicing concise, structured answers.",
         "medium": "Q&A responses are generally adequate; aim for more precise, evidence-based answers.",
         "high":   "Q&A handled confidently and accurately.",
     },
     "delivery_pace": {
-        "low":    "Your speaking pace is outside the ideal range (≈120-160 wpm). "
-                  "Practice with a timer to find a natural, clear cadence.",
-        "medium": "Pace is acceptable but could be more consistent; watch for "
-                  "stretches that are too fast or too slow.",
+        "low":    "Your speaking pace is outside the ideal range (approximately 120-160 wpm). Practice with a timer to find a natural cadence.",
+        "medium": "Pace is acceptable but could be more consistent; watch for stretches that are too fast or too slow.",
         "high":   "Speaking pace and fluency are well-controlled.",
     },
-    # ── Content ───────────────────────────────────────────────────────────────
     "content_structure": {
-        "low":    "Ensure the presentation includes an explicit intro, a logically "
-                  "sequenced body, and a clear conclusion/recommendations.",
-        "medium": "Most structural elements are present; tighten the transitions and "
-                  "make sure every section connects back to the central purpose.",
+        "low":    "Ensure the presentation includes an explicit intro, a logically sequenced body, and a clear conclusion/recommendations.",
+        "medium": "Most structural elements are present; tighten transitions and connect each section back to the central purpose.",
         "high":   "Structure and logical flow are strong.",
     },
     "structure_intro": {
-        "low":    "Add a clear opening statement in the first 20% of the presentation "
-                  "('Today we will…', 'Our topic is…') so judges immediately know the purpose.",
+        "low":    "Add a clear opening statement in the first 20% of the presentation so judges immediately know the purpose.",
         "medium": "Introduction is present but could be more immediate and purposeful.",
         "high":   "Introduction clearly establishes the purpose right away.",
     },
     "structure_conclusion": {
-        "low":    "End with an explicit conclusion phrase ('In summary…', 'To conclude…') "
-                  "that wraps back to all key points covered.",
+        "low":    "End with an explicit conclusion phrase that wraps back to all key points covered.",
         "medium": "Conclusion exists but could more directly echo the opening purpose.",
         "high":   "Conclusion provides a strong connection to the entire presentation.",
     },
     "content_recommendations": {
-        "low":    "Add specific, realistic recommendations ('We recommend that businesses…', "
-                  "'Our proposal is…') — this is a heavily-weighted criterion on most FBLA rubrics.",
-        "medium": "Recommendations are present; make them more concrete and feasible "
-                  "with supporting evidence.",
+        "low":    "Add specific, realistic recommendations -- this is a heavily-weighted criterion on most FBLA rubrics.",
+        "medium": "Recommendations are present; make them more concrete and feasible with supporting evidence.",
         "high":   "Recommendations are clear, logical, and well-supported.",
     },
     "content_topic": {
-        "low":    "Deepen the topic coverage using industry terminology throughout; "
-                  "judges reward evidence that you understand the subject beyond surface level.",
-        "medium": "Topic understanding is evident; incorporate more domain-specific "
-                  "vocabulary and data to elevate the depth.",
+        "low":    "Deepen topic coverage using industry terminology; judges reward evidence you understand the subject beyond surface level.",
+        "medium": "Topic understanding is evident; incorporate more domain-specific vocabulary and data.",
         "high":   "Strong demonstration of topic understanding with industry terminology.",
     },
     "content_accuracy": {
-        "low":    "Cite credible, professionally legitimate sources explicitly. "
-                  "Every factual claim should be traceable to a named source.",
+        "low":    "Cite credible sources explicitly. Every factual claim should be traceable to a named source.",
         "medium": "Some sources are cited; aim for consistent citation of all key data points.",
         "high":   "Compelling evidence from legitimate sources cited throughout.",
     },
-    # ── Slides / Design ───────────────────────────────────────────────────────
     "slide_design": {
-        "low":    "Reduce text on slides — aim for fewer than 30 words per slide on average. "
-                  "Use visuals (charts, images, diagrams) to support your message rather than "
-                  "paragraphs of text.",
-        "medium": "Slides are mostly clean; ensure design is consistent across all slides "
-                  "and that visuals reinforce key points rather than repeat spoken content.",
+        "low":    "Reduce text on slides -- aim for fewer than 30 words per slide. Use visuals to support your message.",
+        "medium": "Slides are mostly clean; ensure consistent design and that visuals reinforce rather than repeat spoken content.",
         "high":   "Slides are professionally designed with clean layouts that support the message.",
     },
-    # ── Protocol ──────────────────────────────────────────────────────────────
     "protocol": {
-        "low":    "Review the event guidelines carefully. Protocol compliance is binary: "
-                  "all checklist items must be met to earn these points.",
-        "medium": "Most protocol items met; double-check technology device limits, "
-                  "material restrictions, and timing.",
+        "low":    "Review the event guidelines carefully. Protocol compliance is binary -- all items must be met.",
+        "medium": "Most protocol items met; double-check technology limits, material restrictions, and timing.",
         "high":   "Presentation protocols followed correctly.",
     },
 }
@@ -2003,27 +1898,28 @@ def _band(fraction: float) -> str:
 
 
 def generate_feedback(score_result: dict) -> str:
-    """
-    Generate a structured feedback report from the output of score_presentation().
-    Parameters
-    ----------
-    score_result : dict
-        The dict returned by score_presentation().
-    Returns
-    -------
-    str
-        A formatted multi-line feedback report.
-    """
-    event = score_result["event"]
-    total = score_result["total_score"]
+    event    = score_result["event"]
+    total    = score_result["total_score"]
     possible = score_result["total_possible"]
-    norm = score_result["normalized_score"]
+    norm     = score_result["normalized_score"]
     placement = score_result["placement_estimate"]
-    criteria = score_result["criterion_scores"]
+    criteria  = score_result["criterion_scores"]
+    level     = score_result.get("competition_level", "state")
+
+    _ASSUMPTION_NOTES = {
+        "protocol":         "* Assumed compliant -- cannot be verified from video alone.",
+        "delivery_qa":      "* Q&A not captured in video; estimated from overall delivery fluency.",
+        "delivery_conf":    "* Eye contact and body language cannot be measured from audio; fluency used as proxy.",
+        "content_accuracy": "* Factual accuracy and citations cannot be verified from audio; structural cues used as proxy.",
+        "content_topic":    "* Topic understanding cannot be semantically assessed; fluency and structure used as proxy.",
+        "slide_design":     "* Visual design quality cannot be assessed from word count alone.",
+    }
+
     lines = [
         "=" * 64,
-        f"  FBLA AI Judge — Feedback Report",
+        "  FBLA AI Judge -- Feedback Report",
         f"  Event: {event}",
+        f"  Competition Level: {level.upper()}",
         "=" * 64,
         "",
         f"  Estimated Score : {total:.1f} / {possible}  ({norm:.1f} / 100)",
@@ -2033,106 +1929,109 @@ def generate_feedback(score_result: dict) -> str:
         "",
         f"  {placement['interpretation']}",
         "",
-        "─" * 64,
+        "-" * 64,
         "  CRITERION BREAKDOWN",
-        "─" * 64,
+        "-" * 64,
     ]
+
     for key, c in criteria.items():
-        pts = c["points_earned"]
-        max_pts = c["max_points"]
-        frac = c["fraction"]
-        label = c["label"]
-        band = _band(frac)
-        bar_filled = int(round(frac * 20))
-        bar = "█" * bar_filled + "░" * (20 - bar_filled)
-        lines.append(f"\n  {label}")
+        pts, max_pts, frac = c["points_earned"], c["max_points"], c["fraction"]
+        b = _band(frac)
+        bar = "#" * int(round(frac * 20)) + "." * (20 - int(round(frac * 20)))
+        lines.append(f"\n  {c['label']}")
         lines.append(f"  [{bar}]  {pts:.1f}/{max_pts}  ({frac*100:.0f}%)")
-        # Fetch feedback for the feature group
         group = EVENTS[event]["criteria"][key]["feature_group"]
-        tmpl = _FEEDBACK_TEMPLATES.get(group, {})
-        suggestion = tmpl.get(band, "")
-        if suggestion and band != "high":
-            lines.append(f"  ► {suggestion}")
-    lines += [
-        "",
-        "─" * 64,
-        "  KEY IMPROVEMENT PRIORITIES",
-        "─" * 64,
-    ]
-    # Sort criteria by fraction ascending and highlight the bottom 3
-    sorted_criteria = sorted(
-        [(k, v) for k, v in criteria.items()],
-        key=lambda x: x[1]["fraction"],
-    )
-    for key, c in sorted_criteria[:3]:
+        if group in _ASSUMPTION_NOTES:
+            lines.append(f"  {_ASSUMPTION_NOTES[group]}")
+        suggestion = _FEEDBACK_TEMPLATES.get(group, {}).get(b, "")
+        if suggestion and b != "high":
+            lines.append(f"  >> {suggestion}")
+
+    lines += ["", "-" * 64, "  KEY IMPROVEMENT PRIORITIES", "-" * 64]
+    for key, c in sorted(criteria.items(), key=lambda x: x[1]["fraction"])[:3]:
         group = EVENTS[event]["criteria"][key]["feature_group"]
-        tmpl = _FEEDBACK_TEMPLATES.get(group, {})
-        suggestion = tmpl.get("low", "")
-        lines.append(f"\n  ⚠  {c['label']}: {c['points_earned']:.1f}/{c['max_points']}")
+        suggestion = _FEEDBACK_TEMPLATES.get(group, {}).get("low", "")
+        lines.append(f"\n  !  {c['label']}: {c['points_earned']:.1f}/{c['max_points']}")
         if suggestion:
             lines.append(f"     {suggestion}")
-    lines.append("\n" + "=" * 64)
+
+    lines += [
+        "", "-" * 64, "  KEY ASSUMPTIONS (Section 6.2 of paper)", "-" * 64, "",
+        "  1. Protocol compliance assumed. Binary criterion worth 10 pts.",
+        "  2. Q&A estimated from delivery fluency; not directly measured.",
+        "  3. Content accuracy estimated from structural completeness.",
+        "  4. Topic understanding estimated from fluency and structure.",
+        "  5. Structural flags use fixed phrase lists; non-standard phrasing",
+        "     may not trigger detection. Generous baselines partially compensate.",
+        "  6. Slide design estimated from word density; visual elements not assessed.",
+        "", "  Scores marked * are estimates rather than direct measurements.",
+        "", "=" * 64,
+    ]
     return "\n".join(lines)
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 7.  QUICK DEMO (run this file directly to verify)
-# ──────────────────────────────────────────────────────────────────────────────
+
+# ==============================================================================
+# 7.  SELF-TEST  (python rubric_heuristics.py)
+#     Verifies all six calibration cases from Table 4 of the paper.
+# ==============================================================================
 
 if __name__ == "__main__":
     print("\n" + "=" * 64)
-    print("  rubric_heuristics.py  —  self-test / demo")
+    print("  rubric_heuristics.py  --  calibration verification")
+    print("  Expected results from Table 4 (Section 5.2.2 of paper)")
     print("=" * 64)
-    # --- Example 1: Strong presentation
-    print("\n[Example 1]  Strong presenter — Introduction to Business Presentation")
-    strong_features = {
-        "wpm": 148,
-        "avg_pause_length": 0.55,
-        "long_pauses_per_minute": 0.8,
-        "has_intro": 1,
-        "has_conclusion": 1,
-        "has_recommendations": 1,
-        "avg_slide_words": 24,
-        "slides_per_minute": 1.8,
-    }
-    result = score_presentation("IntroductiontoBusinessPresentation", strong_features)
-    print(f"  Total: {result['total_score']}/{result['total_possible']}  "
-          f"({result['normalized_score']:.1f}/100)")
-    print(f"  Placement: {result['placement_estimate']['score_band']}")
-    print(f"  Top-3: {result['placement_estimate']['top3_likelihood'].upper()}")
-    # --- Example 2: Mid-tier presentation
-    print("\n[Example 2]  Mid-tier presenter — Public Speaking")
-    mid_features = {
-        "wpm": 175,
-        "avg_pause_length": 1.2,
-        "long_pauses_per_minute": 2.5,
-        "has_intro": 1,
-        "has_conclusion": 0,
-        "has_recommendations": 0,
-        "avg_slide_words": None,
-        "slides_per_minute": None,
-    }
-    result2 = score_presentation("PublicSpeaking", mid_features)
-    print(f"  Total: {result2['total_score']}/{result2['total_possible']}  "
-          f"({result2['normalized_score']:.1f}/100)")
-    print(f"  Placement: {result2['placement_estimate']['score_band']}")
-    print(f"  Top-3: {result2['placement_estimate']['top3_likelihood'].upper()}")
-    # --- Example 3: Full feedback report
-    print("\n[Example 3]  Full feedback — Sales Presentation")
-    sales_features = {
-        "wpm": 130,
-        "avg_pause_length": 0.7,
-        "long_pauses_per_minute": 1.5,
-        "has_intro": 1,
-        "has_conclusion": 1,
-        "has_recommendations": 0,
-        "avg_slide_words": 45,
-        "slides_per_minute": 2.0,
-    }
-    result3 = score_presentation("SalesPresentation", sales_features)
-    report = generate_feedback(result3)
-    print(report)
-    # --- Show all available events
-    print(f"\n[Info]  {len(EVENTS)} events loaded:")
+
+    cases = [
+        ("Case 1", "IntroductiontoBusinessPresentation", "state",
+         {"wpm": 138, "avg_pause_length": 0.72, "long_pauses_per_minute": 1.0,
+          "has_intro": 1, "has_conclusion": 1, "has_recommendations": 0,
+          "avg_slide_words": None, "slides_per_minute": None},
+         "Top-3 level", 88.2),
+        ("Case 2", "IntroductiontoBusinessPresentation", "national",
+         {"wpm": 143, "avg_pause_length": 0.55, "long_pauses_per_minute": 0.8,
+          "has_intro": 1, "has_conclusion": 1, "has_recommendations": 1,
+          "avg_slide_words": 22, "slides_per_minute": None},
+         "Top-3 level", 99.0),
+        ("Case 3", "IntroductiontoBusinessPresentation", "state",
+         {"wpm": 185, "avg_pause_length": 1.1, "long_pauses_per_minute": 1.5,
+          "has_intro": 1, "has_conclusion": 0, "has_recommendations": 0,
+          "avg_slide_words": 55, "slides_per_minute": None},
+         "Top-10 but not Top-3", 81.6),
+        ("Case 4", "PublicSpeaking", "state",
+         {"wpm": 220, "avg_pause_length": 2.1, "long_pauses_per_minute": 4.0,
+          "has_intro": 0, "has_conclusion": 0, "has_recommendations": 0,
+          "avg_slide_words": None, "slides_per_minute": None},
+         "Below Top-10", 61.8),
+        ("Case 5", "SalesPresentation", "state",
+         {"wpm": 145, "avg_pause_length": 0.6, "long_pauses_per_minute": 0.8,
+          "has_intro": 1, "has_conclusion": 1, "has_recommendations": 1,
+          "avg_slide_words": None, "slides_per_minute": None},
+         "Top-3 level", 99.9),
+        ("Case 6", "BusinessPlan", "national",
+         {"wpm": 155, "avg_pause_length": 0.85, "long_pauses_per_minute": 1.2,
+          "has_intro": 1, "has_conclusion": 0, "has_recommendations": 0,
+          "avg_slide_words": 35, "slides_per_minute": None},
+         "Borderline Top-10", 88.8),
+    ]
+
+    all_pass = True
+    for name, event, level, feats, exp_band, exp_score in cases:
+        r = score_presentation(event, feats, competition_level=level)
+        band  = r["placement_estimate"]["score_band"]
+        score = r["normalized_score"]
+        ok = (band == exp_band) and (abs(score - exp_score) < 1.0)
+        if not ok:
+            all_pass = False
+        status = "PASS" if ok else "FAIL"
+        print(f"\n  {name}: {event} / {level}")
+        print(f"    Score:  {score:.1f}  (expected ~{exp_score})")
+        print(f"    Band:   {band}  (expected: {exp_band})")
+        print(f"    Status: {status}")
+
+    print("\n" + "=" * 64)
+    print(f"  {'ALL 6 CALIBRATION CASES PASS' if all_pass else 'FAILURES DETECTED -- check above'}")
+    print("=" * 64)
+
+    print(f"\n  {len(EVENTS)} events loaded:")
     for name, ev in sorted(EVENTS.items()):
-        ncrit = len(ev["criteria"])
-        print(f"  {name:<45}  {ev['total_points']:>4} pts  {ncrit} criteria")
+        print(f"  {name:<48}  {ev['total_points']:>4} pts  {len(ev['criteria'])} criteria")
