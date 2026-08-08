@@ -1,4 +1,5 @@
 #Imports
+
 import os
 from dataclasses import dataclass, asdict
 from typing import List, Dict, Any, Optional, Tuple
@@ -20,7 +21,9 @@ MAX_WPM = 250.0
 MAX_AVG_PAUSE = 5.0
 
 os.makedirs(AUDIO_DIR, exist_ok=True)
+
 os.makedirs(SLIDES_DIR, exist_ok=True)
+
 whisper_model = whisper.load_model("base")
 
 @dataclass
@@ -45,26 +48,27 @@ class PresentationFeatures:
     used_word_timestamps: int
 
 # 2. Audio extraction & transcription
+
+
 def extract_audio_from_video(video_path: str, audio_dir: str = AUDIO_DIR) -> str:
     basename = os.path.splitext(os.path.basename(video_path))[0]
     audio_path = os.path.join(audio_dir, f"{basename}.wav")
     clip = VideoFileClip(video_path)
-    clip.audio.write_audiofile(audio_path)
+    clip.audio.write_audiofile(audio_path, logger=None)
     clip.close()
     return audio_path
+
 
 def transcribe_audio_with_whisper(audio_path: str) -> Dict[str, Any]:
     try:
         result = whisper_model.transcribe(
             audio_path,
             verbose=False,
-            word_timestamps=True
+            word_timestamps=True,
         )
-
     except TypeError:
         result = whisper_model.transcribe(audio_path, verbose=False)
     return result
-
 INTRO_CUES = [
     "today we will",
     "in this presentation",
@@ -97,6 +101,7 @@ RECOMMENDATION_CUES = [
     "our solution is",
 ]
 
+
 def clip_to_presentation_window(
     segments: List[Dict[str, Any]],
     max_seconds: float = PRESENTATION_MAX_SECONDS,
@@ -116,6 +121,7 @@ def clip_to_presentation_window(
         clipped.append(seg_copy)
         last_end = seg_copy["end"]
     return clipped, last_end
+
 
 def compute_delivery_features(
     transcript_result: Dict[str, Any]
@@ -186,6 +192,7 @@ def compute_delivery_features(
         "used_word_timestamps": used_word_timestamps,
     }
 
+
 def join_segments_text_and_timing(
     transcript_result: Dict[str, Any]
 ) -> Tuple[List[Dict[str, Any]], float]:
@@ -201,6 +208,7 @@ def join_segments_text_and_timing(
             "text": seg.get("text", "").lower(),
         })
     return flattened, analyzed_duration
+
 
 def compute_structure_features(
     transcript_result: Dict[str, Any]
@@ -234,7 +242,8 @@ def compute_structure_features(
         "has_conclusion": has_conclusion,
         "has_recommendations": has_recommendations,
     }
-    
+
+
 def preprocess_for_ocr(pil_img: Image.Image) -> Image.Image:
     img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -244,7 +253,9 @@ def preprocess_for_ocr(pil_img: Image.Image) -> Image.Image:
     binary = cv2.dilate(binary, kernel, iterations=1)
     return Image.fromarray(binary)
 
+
 def get_slide_images_for_video(video_basename: str) -> List[str]:
+    """Original folder-based slide lookup — used by main.py batch pipeline."""
     slide_paths = []
     if not os.path.exists(SLIDES_DIR):
         return slide_paths
@@ -253,7 +264,9 @@ def get_slide_images_for_video(video_basename: str) -> List[str]:
             slide_paths.append(os.path.join(SLIDES_DIR, fname))
     return slide_paths
 
+
 def compute_avg_slide_words(video_basename: str) -> Tuple[float, int]:
+    """Original folder-based OCR — used by main.py batch pipeline."""
     slide_paths = get_slide_images_for_video(video_basename)
     if not slide_paths:
         return 0.0, 0
@@ -263,40 +276,131 @@ def compute_avg_slide_words(video_basename: str) -> Tuple[float, int]:
     for path in slide_paths:
         try:
             pil_img = Image.open(path)
-
         except Exception:
             continue
         preprocessed = preprocess_for_ocr(pil_img)
         text = pytesseract.image_to_string(preprocessed, config=custom_config)
         words = text.strip().split()
-        word_count = len(words)
-        if word_count < 3:
+        if len(words) < 3:
             continue
-        total_words += word_count
+        total_words += len(words)
         counted_slides += 1
     if counted_slides == 0:
         return 0.0, 0
-    avg_words = total_words / counted_slides
-    return avg_words, counted_slides
+    return total_words / counted_slides, counted_slides
+
+
+# Frame interval for slide sampling: one frame every N seconds.
+# 5 s gives ~84 samples for a 7-min presentation — enough to catch every
+# slide transition without being too slow.
+FRAME_SAMPLE_INTERVAL = 5.0
+
+# If two consecutive sampled frames differ by less than this fraction of
+# pixels (after downscaling), treat them as the same slide and skip the
+# duplicate.  0.02 = 2 % pixel difference threshold.
+FRAME_DEDUP_THRESHOLD = 0.02
+
+
+def _frames_are_duplicate(gray_a: np.ndarray, gray_b: np.ndarray) -> bool:
+    """Return True if two greyscale frames are visually near-identical."""
+    if gray_a.shape != gray_b.shape:
+        return False
+    diff = np.abs(gray_a.astype(np.int32) - gray_b.astype(np.int32))
+    changed_pixels = np.sum(diff > 10)
+    return (changed_pixels / gray_a.size) < FRAME_DEDUP_THRESHOLD
+
+
+def compute_avg_slide_words_from_video(
+    video_path: str,
+    sample_interval: float = FRAME_SAMPLE_INTERVAL,
+) -> Tuple[float, int]:
+    """
+    Extract slide content directly from a video file.
+
+    Samples one frame every `sample_interval` seconds, deduplicates
+    near-identical consecutive frames (repeated title cards, static
+    backgrounds), then runs Tesseract OCR on each unique frame and
+    computes the average word count per frame.
+
+    Returns
+    -------
+    (avg_slide_words, unique_frames_used)
+      avg_slide_words  – average word count per unique frame (0.0 if none)
+      unique_frames_used – number of unique frames that passed dedup + had ≥3 words
+    """
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        return 0.0, 0
+
+    fps      = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    duration = n_frames / fps
+    step     = int(fps * sample_interval)
+    if step < 1:
+        step = 1
+
+    ocr_config   = r"--oem 3 --psm 6 -l eng"
+    total_words  = 0
+    counted      = 0
+    prev_gray    = None
+    frame_idx    = 0
+
+    while True:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        # Downscale for fast dedup comparison (keeps ~10 % of pixels)
+        small = cv2.resize(frame, (0, 0), fx=0.3, fy=0.3)
+        gray  = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+
+        if prev_gray is not None and _frames_are_duplicate(prev_gray, gray):
+            frame_idx += step
+            continue
+        prev_gray = gray
+
+        # Full-res OCR
+        pil_img    = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        processed  = preprocess_for_ocr(pil_img)
+        text       = pytesseract.image_to_string(processed, config=ocr_config)
+        word_count = len(text.strip().split())
+
+        if word_count >= 3:
+            total_words += word_count
+            counted     += 1
+
+        frame_idx += step
+        # Stop once we've passed the presentation window
+        if frame_idx / fps > PRESENTATION_MAX_SECONDS:
+            break
+
+    cap.release()
+
+    if counted == 0:
+        return 0.0, 0
+    return total_words / counted, counted
+
 
 def process_single_video(video_path: str) -> Optional[PresentationFeatures]:
     basename = os.path.splitext(os.path.basename(video_path))[0]
     print(f"\n=== Processing {basename} ===")
     try:
         audio_path = extract_audio_from_video(video_path)
-
     except Exception as e:
         print(f"[WARN] Failed to extract audio for {basename}: {e}")
         return None
     try:
         transcript_result = transcribe_audio_with_whisper(audio_path)
-
     except Exception as e:
         print(f"[WARN] Failed to transcribe {basename}: {e}")
         return None
     delivery = compute_delivery_features(transcript_result)
     structure = compute_structure_features(transcript_result)
-    avg_slide_words, slides_used = compute_avg_slide_words(basename)
+    # Try frame-based slide extraction first; fall back to folder-based
+    avg_slide_words, slides_used = compute_avg_slide_words_from_video(video_path)
+    if slides_used == 0:
+        avg_slide_words, slides_used = compute_avg_slide_words(basename)
     print(
         f"  analyzed_duration={delivery['analyzed_duration']:.1f}s, "
         f"wpm={delivery['wpm']:.1f}, "
@@ -322,6 +426,7 @@ def process_single_video(video_path: str) -> Optional[PresentationFeatures]:
         used_word_timestamps=delivery["used_word_timestamps"],
     )
 
+
 def process_all_videos(video_dir: str = VIDEO_DIR, output_csv: str = OUTPUT_CSV):
     feature_rows: List[Dict[str, Any]] = []
     for fname in sorted(os.listdir(video_dir)):
@@ -342,6 +447,5 @@ def process_all_videos(video_dir: str = VIDEO_DIR, output_csv: str = OUTPUT_CSV)
 
     else:
         print("No valid feature rows produced.")
-
 if __name__ == "__main__":
     process_all_videos()
