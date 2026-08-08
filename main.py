@@ -1,4 +1,45 @@
-# Imports
+"""
+main.py
+=======
+Test harness for the 10 videos listed on meeting notes page 21.
+
+Videos (from meeting notes, April 1st session):
+  1.  FBLA Introduction to Business Presentation 2026 #1
+  2.  FBLA Introduction to Business Presentation #2  (3rd Place SLC 2026)
+  3.  FBLA Introduction to Business Presentation #3
+  4.  FBLA Introduction to Business Presentation #4
+  5.  FBLA Sales Presentation  (1st Place SLC 2021)
+  6.  FBLA 2023 Digital Video Production Contest Presentation
+  7.  Spelpreneur Pitch Competition 2025 – Student Business Pitch
+  8.  2025 Warrior Startup Challenge – Student Business Plan Competition
+  9.  High School Business Pitch Competition
+  10. High School Entrepreneurship Pitch
+Each video maps to an FBLA rubric event so that rubric_heuristics.py can
+produce a placement estimate alongside the extracted features.
+
+Usage
+-----
+    python main.py                 # run all 10 videos
+    python main.py --video 1       # run only video 1 (1-indexed)
+    python main.py --video 1 3 5   # run videos 1, 3, and 5
+    python main.py --dry-run       # check file existence without processing
+Expected directory layout
+--------------------------
+    videos/
+        video_01_fbla_intro_business_2026_1.mp4
+        video_02_fbla_intro_business_2026_2_3rd_slc.mp4
+        ...
+    slides/                        # optional – slide images per video
+        video_01_fbla_intro_business_2026_1_slide1.png
+        ...
+    audio/                         # auto-created by extract_features.py
+Output
+------
+  • Per-video feature summary printed to stdout.
+  • features_10_videos.csv written to the current directory.
+  • rubric_heuristics feedback report printed to stdout for each video.
+"""
+
 import os
 import sys
 import csv
@@ -26,70 +67,85 @@ from rubric_heuristics import score_presentation, generate_feedback
 # Use whatever extension the actual file has (.mp4 / .mov / .mkv / .avi).
 # If you rename your files differently, update the "filename" field below.
 # ──────────────────────────────────────────────────────────────────────────────
+
 VIDEOS = [
     {
         "slot": 1,
         "filename": "video_01_fbla_intro_business_2026_1.mp4",
         "label": "FBLA Introduction to Business Presentation 2026 #1",
         "event": "IntroductiontoBusinessPresentation",
+        "competition_level": "state",
     },
     {
         "slot": 2,
         "filename": "video_02_fbla_intro_business_2026_2_3rd_slc.mp4",
         "label": "FBLA Introduction to Business Presentation #2 (3rd Place SLC 2026)",
         "event": "IntroductiontoBusinessPresentation",
+        "competition_level": "state",
     },
     {
         "slot": 3,
         "filename": "video_03_fbla_intro_business_3.mp4",
         "label": "FBLA Introduction to Business Presentation #3",
         "event": "IntroductiontoBusinessPresentation",
+        "competition_level": "state",
     },
     {
         "slot": 4,
         "filename": "video_04_fbla_intro_business_4.mp4",
         "label": "FBLA Introduction to Business Presentation #4",
         "event": "IntroductiontoBusinessPresentation",
+        "competition_level": "state",
     },
     {
         "slot": 5,
         "filename": "video_05_fbla_sales_presentation_1st_slc_2021.mp4",
         "label": "FBLA Sales Presentation (1st Place SLC 2021)",
         "event": "SalesPresentation",
+        "competition_level": "state",
     },
     {
         "slot": 6,
         "filename": "video_06_fbla_digital_video_production_2023.mp4",
         "label": "FBLA 2023 Digital Video Production Contest Presentation",
         "event": "DigitalVideoProduction",
+        "competition_level": "state",
     },
     {
         "slot": 7,
         "filename": "video_07_spelpreneur_pitch_2025.mp4",
         "label": "Spelpreneur Pitch Competition 2025 – Student Business Pitch",
         "event": "BusinessPlan",
+        "competition_level": "state",
     },
     {
         "slot": 8,
         "filename": "video_08_warrior_startup_challenge_2025.mp4",
         "label": "2025 Warrior Startup Challenge – Student Business Plan Competition",
         "event": "BusinessPlan",
+        "competition_level": "state",
     },
     {
         "slot": 9,
         "filename": "video_09_high_school_business_pitch.mp4",
         "label": "High School Business Pitch Competition",
         "event": "BusinessPlan",
+        "competition_level": "state",
     },
     {
         "slot": 10,
         "filename": "video_10_high_school_entrepreneurship_pitch.mp4",
         "label": "High School Entrepreneurship Pitch",
         "event": "BusinessPlan",
+        "competition_level": "state",
     },
 ]
 
+# ──────────────────────────────────────────────────────────────────────────────
 # HELPERS
+# ──────────────────────────────────────────────────────────────────────────────
+
+
 def resolve_video_path(filename: str) -> Optional[str]:
     """
     Find a video file by its registered filename, trying all common extensions
@@ -107,8 +163,10 @@ def resolve_video_path(filename: str) -> Optional[str]:
         return exact
     return None
 
+
 def print_separator(char: str = "─", width: int = 68) -> None:
     print(char * width)
+
 
 def print_feature_table(feats: PresentationFeatures) -> None:
     """Pretty-print extracted features in a compact table."""
@@ -127,29 +185,34 @@ def print_feature_table(feats: PresentationFeatures) -> None:
     col = max(len(r[0]) for r in rows)
     for label, value in rows:
         print(f"  {label:<{col}}  {value}")
- 
+
+# ──────────────────────────────────────────────────────────────────────────────
 # PER-VIDEO TEST RUNNER
+# ──────────────────────────────────────────────────────────────────────────────
+
+
 def run_video_test(entry: dict, dry_run: bool = False) -> Optional[dict]:
     """
     Process one video entry end-to-end:
       1. Resolve file path.
       2. Extract features (skip in dry-run mode).
-      3. Score against the event rubric.
+      3. Score against the event rubric at the correct competition level.
       4. Print results.
     Returns a flat dict suitable for CSV writing, or None on failure.
     """
-    slot     = entry["slot"]
-    filename = entry["filename"]
-    label    = entry["label"]
-    event    = entry["event"]
+    slot              = entry["slot"]
+    filename          = entry["filename"]
+    label             = entry["label"]
+    event             = entry["event"]
+    competition_level = entry["competition_level"]
     print()
     print_separator("═")
     print(f"  VIDEO {slot:02d} / 10")
     print(f"  {label}")
-    print(f"  Event rubric : {event}")
-    print(f"  File         : {filename}")
+    print(f"  Event rubric      : {event}")
+    print(f"  Competition level : {competition_level.upper()}")
+    print(f"  File              : {filename}")
     print_separator("═")
-  
     # ── 1. File check ──────────────────────────────────────────────────────
     video_path = resolve_video_path(filename)
     if video_path is None:
@@ -158,11 +221,10 @@ def run_video_test(entry: dict, dry_run: bool = False) -> Optional[dict]:
         print(f"           {os.path.splitext(filename)[0]}.<mp4|mov|mkv|avi>")
         print( "         Rename your downloaded file to match and re-run.")
         return None
-    print(f"  Found        : {video_path}")
+    print(f"  Found             : {video_path}")
     if dry_run:
         print("  [DRY-RUN] Skipping processing.")
         return None
-      
     # ── 2. Feature extraction ─────────────────────────────────────────────
     print()
     feats: Optional[PresentationFeatures] = process_single_video(video_path)
@@ -175,31 +237,35 @@ def run_video_test(entry: dict, dry_run: bool = False) -> Optional[dict]:
     print_feature_table(feats)
     # ── 3. Rubric scoring ─────────────────────────────────────────────────
     feature_dict = {
-        "wpm":                   feats.wpm,
-        "avg_pause_length":      feats.avg_pause_length,
+        "wpm":                    feats.wpm,
+        "avg_pause_length":       feats.avg_pause_length,
         "long_pauses_per_minute": feats.long_pauses_per_min,
-        "has_intro":             feats.has_intro,
-        "has_conclusion":        feats.has_conclusion,
-        "has_recommendations":   feats.has_recommendations,
-        "avg_slide_words":       feats.avg_slide_words if feats.avg_slide_words > 0 else None,
-        "slides_per_minute":     None,
+        "has_intro":              feats.has_intro,
+        "has_conclusion":         feats.has_conclusion,
+        "has_recommendations":    feats.has_recommendations,
+        "avg_slide_words":        feats.avg_slide_words if feats.avg_slide_words > 0 else None,
+        "slides_per_minute":      None,
     }
-    score_result = score_presentation(event, feature_dict)
+    score_result = score_presentation(event, feature_dict, competition_level=competition_level)
     report = generate_feedback(score_result)
     print()
     print(report)
-  
     # ── 4. Build CSV row ──────────────────────────────────────────────────
     row = asdict(feats)
-    row["event"] = event
-    row["normalized_score"] = score_result["normalized_score"]
-    row["score_band"]       = score_result["placement_estimate"]["score_band"]
-    row["top3_likelihood"]  = score_result["placement_estimate"]["top3_likelihood"]
-    row["top10_likelihood"] = score_result["placement_estimate"]["top10_likelihood"]
-    row["label"]            = label
+    row["event"]             = event
+    row["competition_level"] = competition_level
+    row["normalized_score"]  = score_result["normalized_score"]
+    row["score_band"]        = score_result["placement_estimate"]["score_band"]
+    row["top3_likelihood"]   = score_result["placement_estimate"]["top3_likelihood"]
+    row["top10_likelihood"]  = score_result["placement_estimate"]["top10_likelihood"]
+    row["label"]             = label
     return row
 
+# ──────────────────────────────────────────────────────────────────────────────
 # MAIN
+# ──────────────────────────────────────────────────────────────────────────────
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Run feature extraction + rubric scoring on the 10 test videos."
